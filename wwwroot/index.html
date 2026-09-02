@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VerifyBlind Test Platformu</title>
+    <link rel="icon" href="https://cdn.verifyblind.com/images/favicon.ico" type="image/x-icon">
+    <script>
+      window.__VB_CDN = 'https://cdn.verifyblind.com';
+      window.__VB_API = 'https://api.verifyblind.com';
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; min-height: 100vh; background: linear-gradient(135deg, #0F172A, #1E3A8A); color: #f8fafc; }
+    .main-wrapper { flex: 1; display: flex; justify-content: center; align-items: center; color: white; padding: 2rem; }
+    .container { width: 100%; max-width: 480px; background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 2.5rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+    .header { text-align: center; margin-bottom: 2rem; }
+    .logo-box {
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 20px;
+    }
+    h1 { font-size: 24px; font-weight: 800; color: white; }
+    .subtitle { color: #94a3b8; font-size: 15px; margin-top: 8px; }
+    .card-custom { background: white; border-radius: 24px; padding: 32px; color: #1e293b; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+    .title-sm { font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px; margin-bottom: 20px; }
+    .option-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .label-text { font-size: 15px; font-weight: 500; color: #1e293b; }
+    .btn-main {
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        width: 100%; margin-top: 20px; background: #2563EB; color: white;
+        border: none; border-radius: 14px; padding: 16px; font-weight: 700;
+        cursor: pointer; font-size: 15px; text-decoration: none;
+    }
+    .btn-main:hover { background: #1D4ED8; }
+    .btn-cancel {
+        margin-top: 32px; background: transparent; border: 1px solid #cbd5e1;
+        border-radius: 10px; padding: 10px 20px; color: #64748b;
+        font-size: 14px; cursor: pointer;
+    }
+    .data-results { background: #F8FAFC; padding: 16px; border-radius: 12px; border: 1px solid #E2E8F0; margin-top: 16px; }
+    .animate-in { animation: slideUp 0.4s ease-out; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    footer { text-align: center; padding: 16px; font-size: 12px; color: #94A3B8; border-top: 1px solid rgba(255,255,255,0.08); }
+    footer a { color: #60A5FA; text-decoration: underline; }
+    footer a:first-child { margin-right: 16px; }
+    .lang-toggle {
+        position: fixed; top: 16px; right: 16px; z-index: 100;
+        display: flex; gap: 4px; padding: 4px;
+        background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+    }
+    .lang-toggle button {
+        background: transparent; border: none; color: #94a3b8;
+        font-family: inherit; font-size: 13px; font-weight: 600;
+        padding: 6px 10px; border-radius: 7px; cursor: pointer;
+    }
+    .lang-toggle button:hover { color: #f8fafc; }
+    .lang-toggle button.active { background: #2563EB; color: white; }
+    /* Kutunun tabanı: landing linki + mağaza rozetleri (doğrudan gelen ziyaretçi için) */
+    .app-strip { margin-top: 28px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; }
+    .app-strip .app-hint { font-size: 12px; color: #94A3B8; }
+    .app-strip .site-link { display: inline-block; margin-top: 16px; color: #93C5FD; font-size: 14px; font-weight: 600; text-decoration: none; }
+    .app-strip .site-link:hover { color: #BFDBFE; text-decoration: underline; }
+    .store-badges { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; margin-top: 12px; }
+    .store-badges a { display: inline-flex; transition: transform 0.2s; }
+    .store-badges a:hover { transform: scale(1.05); }
+    .store-badges img { display: block; width: auto; }
+    .store-badges .badge-apple { height: 40px; }
+    /* Play PNG'sinin şeffaf kenar payı var; Apple SVG ile görsel yükseklik eşitlensin diye daha büyük (landing ile aynı oran) */
+    .store-badges .badge-play { height: 52px; }
+    </style>
+</head>
+<body>
+<div class="lang-toggle" role="group" aria-label="Language / Dil">
+    <button type="button" data-lang="tr" onclick="setLang('tr')">TR</button>
+    <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+</div>
+<div class="main-wrapper">
+    <div class="container">
+        <div class="header">
+            <div class="logo-box">
+                <img id="vb-logo" src="" alt="VerifyBlind" width="80" height="80" style="object-fit:contain;">
+            </div>
+            <h1 data-i18n="header.title">VerifyBlind Test Platformu</h1>
+            <p class="subtitle" data-i18n="header.subtitle">Modern Kimlik Doğrulama Deneyimi</p>
+        </div>
+
+        <div id="options-card" class="card-custom auth-form animate-in">
+            <h2 class="title-sm" data-i18n="options.heading">İSTENEN VERİLER</h2>
+            <div class="options-list">
+                <label class="option-item">
+                    <input type="checkbox" id="opt-userid" checked />
+                    <span class="label-text" data-i18n="options.userid">Kullanıcı Kimliği (Maskeli)</span>
+                </label>
+                <label class="option-item">
+                    <input type="checkbox" id="opt-age" checked />
+                    <span class="label-text" data-i18n="options.age">Yaş Doğrulaması (18+)</span>
+                </label>
+            </div>
+            <button id="btn-start" class="btn-main" onclick="handleStart()">
+                <span data-i18n="btn.start">Doğrulamayı Başlat</span>
+                <span class="btn-arrow" aria-hidden="true">&#10132;</span>
+            </button>
+        </div>
+
+        <div id="widget-card" class="card-custom animate-in" style="display:none;">
+            <div id="verifyblind-widget"></div>
+            <button class="btn-cancel" onclick="handleReset()" style="margin-top:16px;width:100%;" data-i18n="btn.cancel">İptal Et</button>
+        </div>
+
+        <div id="result-card" class="card-custom result-view animate-in" style="display:none;">
+            <div style="text-align:center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"
+                     fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                     style="display:block;margin:0 auto 16px;">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <h2 style="font-size:1.5rem;font-weight:700;color:#1E293B;" data-i18n="result.success">Doğrulama Başarılı</h2>
+            </div>
+            <div class="data-results">
+                <h3 style="font-size:0.75rem;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;" data-i18n="result.output">
+                    Güvenli Veri Çıktısı
+                </h3>
+                <pre id="result-pre" style="font-size:0.875rem;font-family:monospace;color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;"></pre>
+            </div>
+            <button class="btn-main" onclick="handleReset()" style="margin-top:24px;" data-i18n="btn.retry">Yeniden Test Et</button>
+        </div>
+
+        <div class="app-strip">
+            <p class="app-hint" data-i18n="strip.hint">Doğrulama için telefonunuzda VerifyBlind uygulaması gerekir.</p>
+            <div class="store-badges">
+                <a href="https://apps.apple.com/tr/app/verifyblind/id6776778178" target="_blank" rel="noopener noreferrer">
+                    <img class="badge-apple" src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="App Store'dan indirin" data-i18n-alt="strip.appStore">
+                </a>
+                <a href="https://play.google.com/store/apps/details?id=com.verifyblind.mobile" target="_blank" rel="noopener noreferrer">
+                    <img id="play-badge" class="badge-play" src="https://play.google.com/intl/tr_tr/badges/static/images/badges/tr_badge_web_generic.png" alt="Google Play'den alın" data-i18n-alt="strip.googlePlay">
+                </a>
+            </div>
+            <a class="site-link" href="https://verifyblind.com" target="_blank" rel="noopener noreferrer" data-i18n="strip.site">VerifyBlind hakkında daha fazlası: verifyblind.com</a>
+        </div>
+    </div>
+</div>
+<footer>
+    <a href="https://verifyblind.com/cerez-politikasi" data-i18n="footer.cookies">Çerez Politikası</a>
+    <a href="https://verifyblind.com/aydinlatma-metni" data-i18n="footer.disclosure">Aydınlatma Metni</a>
+</footer>
+
+<script>
+  document.getElementById('vb-logo').src = window.__VB_CDN + '/images/logo.png';
+  (function() {
+    var s = document.createElement('script');
+    s.src = window.__VB_CDN + '/sdk/v1.0.0/verifyblind.js';
+    s.integrity = 'sha384-TRoHlSq3GSFXepiilMFxyyVsHt23aFYuk03hDTFZGMCYSU6qQckiEFjVk8Nssixe';
+    s.crossOrigin = 'anonymous';
+    document.head.appendChild(s);
+  })();
+</script>
+<script>
+// --- i18n (TR/EN) -----------------------------------------------------------
+var VB_I18N = {
+    tr: {
+        'page.title': 'VerifyBlind Test Platformu',
+        'header.title': 'VerifyBlind Test Platformu',
+        'header.subtitle': 'Modern Kimlik Doğrulama Deneyimi',
+        'options.heading': 'İSTENEN VERİLER',
+        'options.userid': 'Kullanıcı Kimliği (Maskeli)',
+        'options.age': 'Yaş Doğrulaması (18+)',
+        'btn.start': 'Doğrulamayı Başlat',
+        'btn.cancel': 'İptal Et',
+        'btn.retry': 'Yeniden Test Et',
+        'btn.loading': 'SDK yükleniyor...',
+        'result.success': 'Doğrulama Başarılı',
+        'result.output': 'Güvenli Veri Çıktısı',
+        'footer.cookies': 'Çerez Politikası',
+        'footer.disclosure': 'Aydınlatma Metni',
+        'alert.sdkFailed': 'VerifyBlind SDK yüklenemedi. Sayfayı yenileyin.',
+        'alert.sigFailed': 'Enclave imza doğrulaması başarısız: ',
+        'alert.unknownError': 'Bilinmeyen hata',
+        'alert.serverLost': 'Sunucu bağlantısı koptu, imza doğrulanamadı.',
+        'alert.error': 'Hata: ',
+        'strip.site': 'VerifyBlind hakkında daha fazlası: verifyblind.com',
+        'strip.hint': 'Doğrulama için telefonunuzda VerifyBlind uygulaması gerekir.',
+        'strip.appStore': "App Store'dan indirin",
+        'strip.googlePlay': "Google Play'den alın",
+        'value.yes': 'Evet',
+        'value.no': 'Hayır'
+    },
+    en: {
+        'page.title': 'VerifyBlind Test Platform',
+        'header.title': 'VerifyBlind Test Platform',
+        'header.subtitle': 'A Modern Identity Verification Experience',
+        'options.heading': 'REQUESTED DATA',
+        'options.userid': 'User ID (Masked)',
+        'options.age': 'Age Verification (18+)',
+        'btn.start': 'Start Verification',
+        'btn.cancel': 'Cancel',
+        'btn.retry': 'Test Again',
+        'btn.loading': 'Loading SDK...',
+        'result.success': 'Verification Successful',
+        'result.output': 'Secure Data Output',
+        'footer.cookies': 'Cookie Policy',
+        'footer.disclosure': 'Disclosure Statement',
+        'alert.sdkFailed': 'Failed to load the VerifyBlind SDK. Please refresh the page.',
+        'alert.sigFailed': 'Enclave signature verification failed: ',
+        'alert.unknownError': 'Unknown error',
+        'alert.serverLost': 'Server connection lost; signature could not be verified.',
+        'alert.error': 'Error: ',
+        'strip.site': 'More about VerifyBlind: verifyblind.com',
+        'strip.hint': 'Verification requires the VerifyBlind app on your phone.',
+        'strip.appStore': 'Download on the App Store',
+        'strip.googlePlay': 'Get it on Google Play',
+        'value.yes': 'Yes',
+        'value.no': 'No'
+    }
+};
+
+var VB_LANG = 'en';
+
+function detectLang() {
+    try {
+        var saved = localStorage.getItem('vb_lang');
+        if (saved === 'tr' || saved === 'en') return saved;
+    } catch (e) {}
+    var nav = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return nav.indexOf('tr') === 0 ? 'tr' : 'en';
+}
+
+function t(key) {
+    var dict = VB_I18N[VB_LANG] || VB_I18N.en;
+    return (dict[key] != null) ? dict[key] : key;
+}
+
+function renderStartButton() {
+    var btn = document.getElementById('btn-start');
+    if (btn) btn.innerHTML = '<span data-i18n="btn.start">' + t('btn.start') + '</span> <span class="btn-arrow" aria-hidden="true">&#10132;</span>';
+}
+
+function applyI18n() {
+    document.documentElement.lang = VB_LANG;
+    document.title = t('page.title');
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) {
+        var key = nodes[i].getAttribute('data-i18n');
+        var val = t(key);
+        if (val != null) nodes[i].textContent = val;
+    }
+    var alts = document.querySelectorAll('[data-i18n-alt]');
+    for (var k = 0; k < alts.length; k++) {
+        alts[k].setAttribute('alt', t(alts[k].getAttribute('data-i18n-alt')));
+    }
+    // Google Play rozeti dile göre (TR/EN); Apple rozeti landing'deki gibi tek dil.
+    var play = document.getElementById('play-badge');
+    if (play) {
+        play.src = (VB_LANG === 'tr')
+            ? 'https://play.google.com/intl/tr_tr/badges/static/images/badges/tr_badge_web_generic.png'
+            : 'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
+    }
+    var buttons = document.querySelectorAll('.lang-toggle button');
+    for (var j = 0; j < buttons.length; j++) {
+        var isActive = buttons[j].getAttribute('data-lang') === VB_LANG;
+        buttons[j].classList.toggle('active', isActive);
+        buttons[j].setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+}
+
+function setLang(lang) {
+    VB_LANG = (lang === 'tr') ? 'tr' : 'en';
+    try { localStorage.setItem('vb_lang', VB_LANG); } catch (e) {}
+    applyI18n();
+}
+
+// --- verification flow ------------------------------------------------------
+function getGenerateUrl() {
+    var path = window.location.pathname;
+    if (path.indexOf('/php') === 0) return '/php/api/generate.php';
+    if (path.indexOf('/net') === 0) return '/net/api/generate';
+    return '/api/generate';
+}
+
+function getValidations() {
+    var v = {};
+    if (document.getElementById('opt-userid').checked) v.user_id = true;
+    if (document.getElementById('opt-age').checked) v.age = '18+';
+    return v;
+}
+
+function handleStart() {
+    if (typeof window.VerifyBlind === 'undefined') {
+        var btn = document.getElementById('btn-start');
+        if (btn) { btn.disabled = true; btn.textContent = t('btn.loading'); }
+        var t0 = 0;
+        var wait = setInterval(function() {
+            t0 += 200;
+            if (typeof window.VerifyBlind !== 'undefined') {
+                clearInterval(wait);
+                if (btn) { btn.disabled = false; renderStartButton(); }
+                handleStart();
+            } else if (t0 > 5000) {
+                clearInterval(wait);
+                alert(t('alert.sdkFailed'));
+                if (btn) { btn.disabled = false; renderStartButton(); }
+            }
+        }, 200);
+        return;
+    }
+    document.getElementById('options-card').style.display = 'none';
+    document.getElementById('widget-card').style.display = 'block';
+
+    window.VerifyBlind.init({
+        containerId: 'verifyblind-widget',
+        generateUrl: getGenerateUrl(),        // /net/api/generate (callback modu)
+        statusUrl: '/net/api/status/{nonce}', // SDK bunu poll eder ({nonce} yer tutucu)
+        mode: 'callback',                      // sunucu-decrypt; anahtar .NET backend'inde
+        apiUrl: window.__VB_API || undefined,
+        captcha: false,
+        payload: { validations: getValidations() },
+        // Callback modunda token YOK — enclave imzasi webhook'ta sunucuda dogrulandi;
+        // data dogrudan enclave claim'leridir ({ nonce, validations, additional_data? }).
+        onSuccess: function (data) { showResult(data); },
+        onError: function (err) {
+            alert(t('alert.error') + (err.message || err));
+            handleReset();
+        },
+        onCancelled: function () { handleReset(); }
+    });
+}
+
+function showResult(data) {
+    document.getElementById('widget-card').style.display = 'none';
+    var lines = [];
+    function maskId(id) { return (!id || id.length <= 8) ? id : id.substring(0, 4) + '...' + id.substring(id.length - 4); }
+    function fmtVal(v) { return v === true ? t('value.yes') : v === false ? t('value.no') : String(v); }
+    if (data.user_id) lines.push('• User ID: ' + maskId(data.user_id));
+    if (data.nsbd_id) lines.push('• NSBD ID: ' + maskId(data.nsbd_id));
+    if (data.doc_id) lines.push('• Doc ID: ' + maskId(data.doc_id));
+    if (data.validations) Object.keys(data.validations).forEach(function (k) { lines.push('• ' + k + ': ' + fmtVal(data.validations[k])); });
+    Object.keys(data).filter(function (k) { return ['user_id','nsbd_id','doc_id','nonce','validations','status','token'].indexOf(k) === -1; })
+        .forEach(function (k) { lines.push('• ' + k + ': ' + fmtVal(data[k])); });
+    if (lines.length === 0) lines.push(JSON.stringify(data, null, 2));
+    document.getElementById('result-pre').textContent = lines.join('\n');
+    document.getElementById('result-card').style.display = 'block';
+}
+
+function handleReset() {
+    if (window.VerifyBlind && typeof window.VerifyBlind.destroy === 'function') {
+        try { window.VerifyBlind.destroy(); } catch (e) {}
+    }
+    document.getElementById('widget-card').style.display = 'none';
+    document.getElementById('verifyblind-widget').innerHTML = '';
+    document.getElementById('result-card').style.display = 'none';
+    document.getElementById('options-card').style.display = 'block';
+}
+
+window.handleReset = handleReset;
+window.handleStart = handleStart;
+window.setLang = setLang;
+
+VB_LANG = detectLang();
+applyI18n();
+</script>
+</body>
+</html>

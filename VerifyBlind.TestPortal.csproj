@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>VerifyBlind.TestPortal</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DotNetEnv" Version="3.1.1" />
+    <PackageReference Include="Sentry.AspNetCore" Version="5.0.0" />
+  </ItemGroup>
+
+  <!-- The xUnit test project lives under Tests/. Keep its sources out of this
+       web app's default **/*.cs glob (they reference xUnit and would break build). -->
+  <ItemGroup>
+    <Compile Remove="Tests/**/*.cs" />
+    <Content Remove="Tests/**/*" />
+    <None Remove="Tests/**/*" />
+  </ItemGroup>
+
+</Project>

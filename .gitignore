@@ -1,0 +1,22 @@
+# Environment — copy .env.example and fill in your API key
+.env
+.env.*
+!.env.example
+
+# .NET build outputs
+bin/
+obj/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
