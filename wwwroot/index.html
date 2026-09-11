@@ -68,8 +68,8 @@
     .store-badges a:hover { transform: scale(1.05); }
     .store-badges img { display: block; width: auto; }
     .store-badges .badge-apple { height: 40px; }
-    /* Play PNG'sinin şeffaf kenar payı var; Apple SVG ile görsel yükseklik eşitlensin diye daha büyük (landing ile aynı oran) */
-    .store-badges .badge-play { height: 52px; }
+    /* Her iki rozet de kenar payı olmayan resmi SVG; aynı yükseklik görsel olarak da eşit. */
+    .store-badges .badge-play { height: 40px; }
     </style>
 </head>
 <body>
@@ -133,10 +133,10 @@
             <p class="app-hint" data-i18n="strip.hint">Doğrulama için telefonunuzda VerifyBlind uygulaması gerekir.</p>
             <div class="store-badges">
                 <a href="https://apps.apple.com/tr/app/verifyblind/id6776778178" target="_blank" rel="noopener noreferrer">
-                    <img class="badge-apple" src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="App Store'dan indirin" data-i18n-alt="strip.appStore">
+                    <img id="apple-badge" class="badge-apple" src="https://cdn.verifyblind.com/images/badges/app-store-tr.svg" alt="App Store'dan indirin" data-i18n-alt="strip.appStore">
                 </a>
                 <a href="https://play.google.com/store/apps/details?id=com.verifyblind.mobile" target="_blank" rel="noopener noreferrer">
-                    <img id="play-badge" class="badge-play" src="https://play.google.com/intl/tr_tr/badges/static/images/badges/tr_badge_web_generic.png" alt="Google Play'den alın" data-i18n-alt="strip.googlePlay">
+                    <img id="play-badge" class="badge-play" src="https://cdn.verifyblind.com/images/badges/google-play-tr.svg" alt="Google Play'den alın" data-i18n-alt="strip.googlePlay">
                 </a>
             </div>
             <a class="site-link" href="https://verifyblind.com" target="_blank" rel="noopener noreferrer" data-i18n="strip.site">VerifyBlind hakkında daha fazlası: verifyblind.com</a>
@@ -251,12 +251,19 @@ function applyI18n() {
     for (var k = 0; k < alts.length; k++) {
         alts[k].setAttribute('alt', t(alts[k].getAttribute('data-i18n-alt')));
     }
-    // Google Play rozeti dile göre (TR/EN); Apple rozeti landing'deki gibi tek dil.
+    // Mağaza rozetleri dile göre (TR/EN), kendi CDN'imizden. Önce Google ve Apple'dan
+    // doğrudan çekiliyorlardı; Google eski rozet üretecini emekliye ayırınca Türkçe
+    // rozet PNG'si 404 vermeye başladı. İki markanın kılavuzu da rozetin indirilip
+    // kendi sitenden sunulmasını istiyor — böylece üçüncü tarafın varlık taşıması
+    // bizi etkilemiyor.
+    var badgeLang = (VB_LANG === 'tr') ? 'tr' : 'en';
     var play = document.getElementById('play-badge');
     if (play) {
-        play.src = (VB_LANG === 'tr')
-            ? 'https://play.google.com/intl/tr_tr/badges/static/images/badges/tr_badge_web_generic.png'
-            : 'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
+        play.src = 'https://cdn.verifyblind.com/images/badges/google-play-' + badgeLang + '.svg';
+    }
+    var apple = document.getElementById('apple-badge');
+    if (apple) {
+        apple.src = 'https://cdn.verifyblind.com/images/badges/app-store-' + badgeLang + '.svg';
     }
     var buttons = document.querySelectorAll('.lang-toggle button');
     for (var j = 0; j < buttons.length; j++) {
