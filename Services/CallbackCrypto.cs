@@ -57,6 +57,37 @@ public static class CallbackCrypto
         }
     }
 
+    /// <summary>
+    /// PCR0 authorization signature: RSA-<b>PKCS#1 v1.5</b>-SHA256 over the PCR0 hex string
+    /// (UTF-8 bytes), developer PUBLIC key (SPKI PEM from <c>GET /api/public/developer-key</c>).
+    ///
+    /// <para>This is what lets a partner confirm — without trusting the relay — that the enclave
+    /// which produced the result is the publicly auditable, reproducibly built one. Verify the
+    /// signature here, then compare <paramref name="pcr0Hex"/> against <c>expected_pcr.json</c>
+    /// in the Enclave repo's latest release.</para>
+    ///
+    /// <para><b>Note the padding differs</b> from the other two signatures in this file: the
+    /// enclave result and the webhook body are RSA-PSS; the PCR0 authorization is PKCS#1 v1.5.
+    /// Using the wrong one fails silently (returns false), so keep them straight.</para>
+    /// </summary>
+    /// <remarks>Malformed key/signature → false, not an exception.</remarks>
+    public static bool VerifyPcr0Signature(string developerPubPem, string pcr0Hex, string signatureB64)
+    {
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(developerPubPem);
+            return rsa.VerifyData(
+                Encoding.UTF8.GetBytes(pcr0Hex),
+                Convert.FromBase64String(signatureB64),
+                HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or CryptographicException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Webhook signature: RSA-PSS-SHA256 over "{timestamp}.{rawBody}", VerifyBlind webhook PUBLIC key (SPKI PEM).</summary>
     /// <remarks>Malformed PEM/signature (bad base64, bad key) → false, not an exception.</remarks>
     public static bool VerifyWebhookSignature(string webhookPubPem, string timestamp, string rawBody, string signatureB64)

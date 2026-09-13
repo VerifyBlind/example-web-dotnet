@@ -70,6 +70,29 @@ public class CallbackCryptoTests
         Assert.False(CallbackCrypto.VerifyEnclaveSignature(spkiB64, payload + "x", sig)); // tamper
     }
 
+    /// <summary>
+    /// PCR0 authorization signature — the check that lets a partner confirm the enclave is the
+    /// publicly auditable build without trusting the relay. Note the padding is PKCS#1 v1.5,
+    /// unlike the other two signatures (PSS); mixing them up fails silently.
+    /// </summary>
+    [Fact]
+    public void VerifyPcr0Signature_ValidSignature_ReturnsTrue()
+    {
+        using var developer = RSA.Create(2048);
+        var pem = new string(PemEncoding.Write("PUBLIC KEY", developer.ExportSubjectPublicKeyInfo()));
+        var pcr0 = new string('a', 96);
+        var sig = Convert.ToBase64String(developer.SignData(
+            Encoding.UTF8.GetBytes(pcr0), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+
+        Assert.True(CallbackCrypto.VerifyPcr0Signature(pem, pcr0, sig));
+        Assert.False(CallbackCrypto.VerifyPcr0Signature(pem, new string('b', 96), sig)); // different PCR0
+
+        // PSS signature over the same PCR0 must NOT pass the PKCS#1 check.
+        var pssSig = Convert.ToBase64String(developer.SignData(
+            Encoding.UTF8.GetBytes(pcr0), HashAlgorithmName.SHA256, RSASignaturePadding.Pss));
+        Assert.False(CallbackCrypto.VerifyPcr0Signature(pem, pcr0, pssSig));
+    }
+
     [Fact]
     public void VerifySignatures_MalformedInputs_ReturnFalse_NotThrow()
     {
@@ -83,5 +106,7 @@ public class CallbackCryptoTests
         // Malformed key material → false
         Assert.False(CallbackCrypto.VerifyWebhookSignature("-----BEGIN PUBLIC KEY-----\nnope\n-----END PUBLIC KEY-----", "123", "b", "AAAA"));
         Assert.False(CallbackCrypto.VerifyEnclaveSignature("not-base64!!", "payload", "AAAA"));
+        Assert.False(CallbackCrypto.VerifyPcr0Signature(pem, "a", "not-base64!!"));
+        Assert.False(CallbackCrypto.VerifyPcr0Signature("-----BEGIN PUBLIC KEY-----\nnope\n-----END PUBLIC KEY-----", "a", "AAAA"));
     }
 }
