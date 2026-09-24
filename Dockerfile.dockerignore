@@ -1,0 +1,20 @@
+# TestPortal build'ine özel ignore — BuildKit, Dockerfile'ın yanındaki
+# "<Dockerfile>.dockerignore" dosyasını bağlamın kök .dockerignore'undan ÖNCE okur.
+#
+# NEDEN ŞART (2026-09-24 deploy arızası):
+# Bu Dockerfile önce yalnız .csproj'u kopyalayıp Linux'ta restore ediyor, sonra tüm
+# klasörü kopyalayıp `--no-restore` ile yayınlıyor. Kopyalanan klasörde Windows'ta
+# üretilmiş bir obj/project.assets.json varsa, Linux restore'unun sonucunun ÜZERİNE
+# yazılıyor ve yayın "Unable to find fallback package folder 'C:\Program Files (x86)\...'"
+# ile çöküyor.
+#
+# Windows obj'si nereden geliyor: deploy kaynakları çalışma alanının İÇİNDEKİ deploy_temp\
+# klasörüne kopyalıyor; VS Code'un C# eklentisi oraya düşen yeni .csproj'u fark edip
+# kendiliğinden restore/design-time build başlatıyor. tar paketi almadan önce biterse
+# obj pakete giriyor. Bu bir YARIŞ — deploy bazen geçer bazen patlar.
+#
+# Sunucuda bağlamın kökünde .dockerignore YOK (src\.dockerignore enclave'in yerel build'i
+# için yazılmış ve deploy onu sunucuya taşımıyor). Buradaki dosya o boşluğu yalnız bu
+# build için kapatıyor, diğer servislerin bağlamına dokunmuyor.
+**/bin/
+**/obj/
