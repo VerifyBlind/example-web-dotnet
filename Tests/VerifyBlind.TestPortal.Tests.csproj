@@ -16,5 +16,6 @@
     <!-- Link the pure crypto helper without referencing the web project, so the
          Program.cs top-level statements don't leak into the test assembly. -->
     <Compile Include="..\Services\CallbackCrypto.cs" Link="CallbackCrypto.cs" />
+    <Compile Include="..\Services\AskedValidations.cs" Link="AskedValidations.cs" />
   </ItemGroup>
 </Project>

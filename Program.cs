@@ -64,17 +64,36 @@ app.MapPost("/api/generate", async (HttpContext ctx, IHttpClientFactory httpClie
         return;
     }
 
+    // ── What to ask is decided by the SERVER ─────────────────────────────────────
+    // The enclave signs `validations.age: true|false`, i.e. the answer to the condition it was
+    // ASKED. The browser body can be edited in DevTools: if this endpoint forwarded the browser's
+    // `validations`, a visitor could ask "1+" instead of "18+" and get a genuinely signed `age: true`.
+    //
+    // A REAL SITE sets validations from its own server configuration and ignores the browser's, e.g.
+    //     var validations = new Dictionary<string, object> { ["age"] = "18+", ["user_id"] = true };
+    //
+    // This demo lets the visitor tick what to verify, so it accepts the browser's choice ONLY from
+    // the allow-list in AskedValidations.Pick. What was asked is stored with the nonce; /api/callback
+    // reads the signed result against that STORED condition.
     var browserBody = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
-    object? validations = null, additionalData = null;
+    Dictionary<string, object>? validations = new();
+    object? additionalData = null;
     try
     {
         using var d = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(browserBody) ? "{}" : browserBody);
         if (d.RootElement.TryGetProperty("validations", out var v))
-            validations = System.Text.Json.JsonSerializer.Deserialize<object>(v.GetRawText());
+            validations = AskedValidations.Pick(v);
         if (d.RootElement.TryGetProperty("additional_data", out var a))
             additionalData = System.Text.Json.JsonSerializer.Deserialize<object>(a.GetRawText());
     }
-    catch { /* bos/hatali govde → validations null */ }
+    catch { /* bos/hatali govde → hicbir sey sorulmaz */ }
+
+    if (validations is null)
+    {
+        ctx.Response.StatusCode = 400;
+        await ctx.Response.WriteAsJsonAsync(new { error = "Bu demoda yalnız 18+ ve user_id sorulabilir" });
+        return;
+    }
 
     var upstream = System.Text.Json.JsonSerializer.Serialize(new
     {
@@ -119,6 +138,8 @@ app.MapPost("/api/generate", async (HttpContext ctx, IHttpClientFactory httpClie
 
     // Webhook gelene kadar 'pending'; QR tarama penceresi ~10 dk.
     store.Set($"cbresult:{nonce}", "{\"status\":\"pending\"}", 600);
+    // Sorulan koşulu nonce ile birlikte sakla — callback sonucu buna göre okur (TTL = QR ömrü + pay).
+    store.Set($"asked:{nonce}", System.Text.Json.JsonSerializer.Serialize(validations), 960);
 
     app.Logger.LogInformation("[Generate-callback] nonce={Nonce} pk_hash={PkHash}", nonce, keys.PkHashHex[..8]);
     await ctx.Response.WriteAsJsonAsync(new { nonce, pk_hash = keys.PkHashHex });
@@ -192,6 +213,20 @@ app.MapPost("/api/callback", async (HttpContext ctx, IHttpClientFactory httpClie
 
         // payload = enclave imzali ic yuk: { nonce, validations:{...}, additional_data? }
         using var claims = System.Text.Json.JsonDocument.Parse(payload);
+
+        // Sonucu generate'te SORDUGUMUZ kosula gore oku (nonce ile saklanan), tarayicinin
+        // soyledigine gore degil. Tek kullanimlik: okununca silinir.
+        var askedJson = store.GetAndRemove($"asked:{nonce}");
+        var mismatch = askedJson is null
+            ? "sorulan koşul bulunamadı (süresi dolmuş veya zaten kullanılmış)"
+            : AskedValidations.Check(askedJson, claims.RootElement, nonce);
+        if (mismatch is not null)
+        {
+            app.Logger.LogWarning("[Callback] Sonuç reddedildi ({Reason}), nonce={Nonce}", mismatch, nonce);
+            ctx.Response.StatusCode = 200; // webhook'u onayla ama sonucu saklama
+            return;
+        }
+
         store.Set($"cbresult:{nonce}",
             System.Text.Json.JsonSerializer.Serialize(new { status = "completed", data = claims.RootElement.Clone() }), 600);
 

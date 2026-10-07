@@ -20,13 +20,19 @@ gelir ve **hiç tarayıcıya düşmez**.
 ### Akış (callback modu)
 1. **Generate** — Tarayıcı `POST /api/generate` çağırır. Sunucu, VerifyBlind `POST /api/pop/generate`'e
    **kendi public key'ini + `callback_url`'ini** ekleyip `X-API-Key` ile iletir; SDK'ya `{ nonce, pk_hash }`
-   döner. API key ve private key tarayıcıya **hiç** gösterilmez. (`Program.cs`)
+   döner. API key ve private key tarayıcıya **hiç** gösterilmez. **Ne sorulacağına (`validations`) sunucu
+   karar verir** — tarayıcıdaki istek değiştirilebilir, `"18+"` yerine `"1+"` soran biri de imzalı
+   `age: true` alır. Bu demo ziyaretçinin seçimini yalnız bir izin listesinden (`18+`, `user_id`) kabul
+   eder; gerçek bir site `validations`'ı kendi ayarından koyar. Sorulan koşul nonce ile birlikte saklanır.
+   (`Program.cs`, `Services/AskedValidations.cs`)
 2. **Doğrulama** — Kullanıcı QR'ı VerifyBlind mobil ile okutur. Enclave sonucu partner public key'iyle
    şifreler ve `callback_url`'e (**`POST /api/callback`**) RSA-PSS **imzalı** bir webhook olarak POST eder.
 3. **Callback alıcı** (`POST /api/callback`) — sırasıyla: (a) webhook imzasını VerifyBlind'ın **public
    key**'iyle (`GET /api/public/webhook-signing-key`) RSA-PSS doğrula → (b) `encrypted_response`'u **kendi
    private key**'inle çöz (RSA-OAEP-SHA256 + AES-256-GCM) → (c) enclave iç imzasını doğrula → (d) sonucu
-   nonce'a göre sakla. (`Services/CallbackCrypto.cs`, `Services/CallbackKeyProvider.cs`)
+   **nonce ile saklanan koşula göre** oku: imzalı `validations.age_condition` varsa (yeni enclave
+   sürümleri) sorulan koşula eşit olmalı → (e) sonucu nonce'a göre sakla. (`Services/CallbackCrypto.cs`,
+   `Services/CallbackKeyProvider.cs`, `Services/AskedValidations.cs`)
 4. **Status** (`GET /api/status/{nonce}`) — SDK bu ucu poll eder; `completed`/`cancelled`/`pending` döner.
 5. **Revoke** (`POST /api/revoke`) — kullanıcı doğrulamayı geri çekince VerifyBlind buraya imzalı
    `{ nonce, partner_id }` POST eder; örnek imzayı doğrulayıp ack'ler (sakladığınız veriyi burada silersiniz).
@@ -71,13 +77,20 @@ touches the browser**.
 ### Flow (callback mode)
 1. **Generate** — The browser calls `POST /api/generate`. The server forwards to VerifyBlind
    `POST /api/pop/generate` adding **its own public key + `callback_url`** with `X-API-Key`, and returns
-   `{ nonce, pk_hash }` to the SDK. The API key and private key are **never** exposed to the browser. (`Program.cs`)
+   `{ nonce, pk_hash }` to the SDK. The API key and private key are **never** exposed to the browser.
+   **The server decides what is asked (`validations`)** — the browser request can be edited, and someone
+   who asks `"1+"` instead of `"18+"` also gets a signed `age: true`. This demo accepts the visitor's
+   choice only from an allow-list (`18+`, `user_id`); a real site sets `validations` from its own
+   configuration. The asked condition is stored with the nonce. (`Program.cs`, `Services/AskedValidations.cs`)
 2. **Verification** — The user scans the QR with VerifyBlind mobile. The enclave encrypts the result with
    the partner public key and POSTs an RSA-PSS **signed** webhook to `callback_url` (**`POST /api/callback`**).
 3. **Callback receiver** (`POST /api/callback`) — in order: (a) verify the webhook signature (RSA-PSS) with
    VerifyBlind's **public key** (`GET /api/public/webhook-signing-key`) → (b) decrypt `encrypted_response`
    with **your private key** (RSA-OAEP-SHA256 + AES-256-GCM) → (c) verify the enclave inner signature →
-   (d) store the result by nonce. (`Services/CallbackCrypto.cs`, `Services/CallbackKeyProvider.cs`)
+   (d) read the result **against the condition stored with the nonce**: if the signed
+   `validations.age_condition` is present (newer enclave releases) it must equal the asked condition →
+   (e) store the result by nonce. (`Services/CallbackCrypto.cs`, `Services/CallbackKeyProvider.cs`,
+   `Services/AskedValidations.cs`)
 4. **Status** (`GET /api/status/{nonce}`) — the SDK polls this; returns `completed`/`cancelled`/`pending`.
 5. **Revoke** (`POST /api/revoke`) — when the user revokes, VerifyBlind POSTs a signed `{ nonce, partner_id }`
    here; the example verifies the signature and acks (this is where you delete the stored record).
