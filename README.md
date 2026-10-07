@@ -103,3 +103,9 @@ dotnet test Tests/   # CallbackCrypto decrypt round-trip + signature tests
 > `callback_url` and `revoke_url` host must match your registered partner domain (SSRF protection).
 
 🌐 [verifyblind.com](https://verifyblind.com) · 🧩 [Next.js example](https://github.com/VerifyBlind/example-web-nextjs) · 🧩 [PHP example](https://github.com/VerifyBlind/example-web-php)
+
+---
+
+## Lisans · License
+
+Apache License 2.0 — bkz. / see [LICENSE](LICENSE).
