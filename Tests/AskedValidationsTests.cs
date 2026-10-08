@@ -30,8 +30,8 @@ public class AskedValidationsTests
             Json("""{ "nonce": "n1", "validations": { "age": true, "age_condition": "18+" } }"""), "n1"));
 
     [Fact]
-    public void Check_OlderEnclaveWithoutAgeCondition_Passes()
-        => Assert.Null(AskedValidations.Check("""{"age":"18+"}""",
+    public void Check_MissingAgeCondition_IsRejected()
+        => Assert.NotNull(AskedValidations.Check("""{"age":"18+"}""",
             Json("""{ "nonce": "n1", "validations": { "age": true } }"""), "n1"));
 
     [Fact]
@@ -47,5 +47,10 @@ public class AskedValidationsTests
     [Fact]
     public void Check_NonceMismatch_IsRejected()
         => Assert.NotNull(AskedValidations.Check("""{"age":"18+"}""",
-            Json("""{ "nonce": "other", "validations": { "age": true } }"""), "n1"));
+            Json("""{ "nonce": "other", "validations": { "age": true, "age_condition": "18+" } }"""), "n1"));
+
+    [Fact]
+    public void Check_MissingAgeResult_IsRejected()
+        => Assert.NotNull(AskedValidations.Check("""{"age":"18+"}""",
+            Json("""{ "nonce": "n1", "validations": { "age_condition": "18+" } }"""), "n1"));
 }

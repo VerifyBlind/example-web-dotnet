@@ -47,9 +47,8 @@ public static class AskedValidations
     /// Checks the enclave-signed payload against the validations stored with the nonce at generate.
     /// Returns a reason when the result must be rejected, or null when it matches what was asked.
     ///
-    /// Newer enclave releases also sign the asked condition as <c>validations.age_condition</c>;
-    /// when present it must equal the stored condition. When absent (older enclave), the stored
-    /// condition is what <c>age</c> refers to — safe only because generate set validations itself.
+    /// The enclave always signs the asked condition as <c>validations.age_condition</c>; it must be
+    /// present and equal the stored condition.
     /// </summary>
     public static string? Check(string askedJson, JsonElement payload, string nonce)
     {
@@ -67,9 +66,13 @@ public static class AskedValidations
         if (askedAge is null)
             return hasAge ? "yaş sorulmadığı halde yaş sonucu geldi" : null;
 
-        if (hasValidations && v.TryGetProperty("age_condition", out var cond)
-            && (cond.ValueKind != JsonValueKind.String || cond.GetString() != askedAge))
-            return $"sorulan yaş koşulu eşleşmiyor (beklenen {askedAge})";
+        if (!hasValidations || !v.TryGetProperty("age", out var age)
+            || (age.ValueKind != JsonValueKind.True && age.ValueKind != JsonValueKind.False))
+            return "yaş sonucu eksik";
+
+        if (!v.TryGetProperty("age_condition", out var cond)
+            || cond.ValueKind != JsonValueKind.String || cond.GetString() != askedAge)
+            return $"sorulan yaş koşulu eşleşmiyor ya da eksik (beklenen {askedAge})";
 
         return null;
     }

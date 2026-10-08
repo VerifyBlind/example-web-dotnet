@@ -30,8 +30,8 @@ gelir ve **hiç tarayıcıya düşmez**.
 3. **Callback alıcı** (`POST /api/callback`) — sırasıyla: (a) webhook imzasını VerifyBlind'ın **public
    key**'iyle (`GET /api/public/webhook-signing-key`) RSA-PSS doğrula → (b) `encrypted_response`'u **kendi
    private key**'inle çöz (RSA-OAEP-SHA256 + AES-256-GCM) → (c) enclave iç imzasını doğrula → (d) sonucu
-   **nonce ile saklanan koşula göre** oku: imzalı `validations.age_condition` varsa (yeni enclave
-   sürümleri) sorulan koşula eşit olmalı → (e) sonucu nonce'a göre sakla. (`Services/CallbackCrypto.cs`,
+   **nonce ile saklanan koşula göre** oku: imzalı `validations.age_condition` zorunlu ve
+   sorulan koşula eşit olmalı (yoksa ya da farklıysa ret) → (e) sonucu nonce'a göre sakla. (`Services/CallbackCrypto.cs`,
    `Services/CallbackKeyProvider.cs`, `Services/AskedValidations.cs`)
 4. **Status** (`GET /api/status/{nonce}`) — SDK bu ucu poll eder; `completed`/`cancelled`/`pending` döner.
 5. **Revoke** (`POST /api/revoke`) — kullanıcı doğrulamayı geri çekince VerifyBlind buraya imzalı
@@ -87,8 +87,8 @@ touches the browser**.
 3. **Callback receiver** (`POST /api/callback`) — in order: (a) verify the webhook signature (RSA-PSS) with
    VerifyBlind's **public key** (`GET /api/public/webhook-signing-key`) → (b) decrypt `encrypted_response`
    with **your private key** (RSA-OAEP-SHA256 + AES-256-GCM) → (c) verify the enclave inner signature →
-   (d) read the result **against the condition stored with the nonce**: if the signed
-   `validations.age_condition` is present (newer enclave releases) it must equal the asked condition →
+   (d) read the result **against the condition stored with the nonce**: the signed
+   `validations.age_condition` is required and must equal the asked condition (missing or different → reject) →
    (e) store the result by nonce. (`Services/CallbackCrypto.cs`, `Services/CallbackKeyProvider.cs`,
    `Services/AskedValidations.cs`)
 4. **Status** (`GET /api/status/{nonce}`) — the SDK polls this; returns `completed`/`cancelled`/`pending`.
