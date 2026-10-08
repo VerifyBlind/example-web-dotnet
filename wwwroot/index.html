@@ -152,8 +152,8 @@
   document.getElementById('vb-logo').src = window.__VB_CDN + '/images/logo.png';
   (function() {
     var s = document.createElement('script');
-    s.src = window.__VB_CDN + '/sdk/v1.0.1/verifyblind.js';
-    s.integrity = 'sha384-DkPyvLVGNq29kFGtgdih7jgC8YhOpGoyIK6PPPSe2atkZju7SlMbKRPLbp/1gYw1';
+    s.src = window.__VB_CDN + '/sdk/v1.0.2/verifyblind.js';
+    s.integrity = 'sha384-WsoGN17VWvGw/+kEmXv4Y2wlsuNpMyIdT3UBDgeAxtGIgOrlQvgoSj/IuPh747NK';
     s.crossOrigin = 'anonymous';
     document.head.appendChild(s);
   })();
@@ -322,7 +322,6 @@ function handleStart() {
         statusUrl: '/net/api/status/{nonce}', // SDK bunu poll eder ({nonce} yer tutucu)
         mode: 'callback',                      // sunucu-decrypt; anahtar .NET backend'inde
         apiUrl: window.__VB_API || undefined,
-        captcha: false,
         payload: { validations: getValidations() },
         // Callback modunda token YOK — enclave imzasi webhook'ta sunucuda dogrulandi;
         // data dogrudan enclave claim'leridir ({ nonce, validations, additional_data? }).
