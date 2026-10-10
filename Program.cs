@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using VerifyBlind.Server;
 using VerifyBlind.TestPortal.Services;
 
 DotNetEnv.Env.Load();
@@ -32,6 +34,16 @@ builder.Services.AddSingleton<InMemoryTtlStore>();
 // Fixed partner callback keypair (env-held). Lazy: only constructed when a callback
 // endpoint is first hit, so the app still boots if CALLBACK_PRIVATE_KEY is unset.
 builder.Services.AddSingleton<CallbackKeyProvider>();
+
+// VerifyBlind.Server (NuGet): webhook signature, callback decryption, enclave signature,
+// single-use nonce and the asked-condition check. One instance; it caches the public keys.
+// This portal is a TEST partner, so the demo card is accepted (a real site leaves it off).
+builder.Services.AddVerifyBlind(o =>
+{
+    var apiUrl = Environment.GetEnvironmentVariable("VERIFYBLIND_API_URL");
+    if (!string.IsNullOrWhiteSpace(apiUrl)) o.ApiBaseUrl = apiUrl;
+    o.AllowTestCards = true;
+});
 
 var app = builder.Build();
 
@@ -73,33 +85,33 @@ app.MapPost("/api/generate", async (HttpContext ctx, IHttpClientFactory httpClie
     //     var validations = new Dictionary<string, object> { ["age"] = "18+", ["user_id"] = true };
     //
     // This demo lets the visitor tick what to verify, so it accepts the browser's choice ONLY from
-    // the allow-list in AskedValidations.Pick. What was asked is stored with the nonce; /api/callback
-    // reads the signed result against that STORED condition.
+    // the allow-list in PickAsked (bottom of this file). What was asked is stored with the nonce;
+    // /api/callback reads the signed result against that STORED condition.
     var browserBody = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
-    Dictionary<string, object>? validations = new();
+    VerifyBlindAsked? asked = new();
     object? additionalData = null;
     try
     {
-        using var d = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(browserBody) ? "{}" : browserBody);
+        using var d = JsonDocument.Parse(string.IsNullOrWhiteSpace(browserBody) ? "{}" : browserBody);
         if (d.RootElement.TryGetProperty("validations", out var v))
-            validations = AskedValidations.Pick(v);
+            asked = PickAsked(v);
         if (d.RootElement.TryGetProperty("additional_data", out var a))
-            additionalData = System.Text.Json.JsonSerializer.Deserialize<object>(a.GetRawText());
+            additionalData = JsonSerializer.Deserialize<object>(a.GetRawText());
     }
     catch { /* bos/hatali govde → hicbir sey sorulmaz */ }
 
-    if (validations is null)
+    if (asked is null)
     {
         ctx.Response.StatusCode = 400;
         await ctx.Response.WriteAsJsonAsync(new { error = "Bu demoda yalnız 18+ ve user_id sorulabilir" });
         return;
     }
 
-    var upstream = System.Text.Json.JsonSerializer.Serialize(new
+    var upstream = JsonSerializer.Serialize(new
     {
         public_key = keys.PublicKeyBase64,
         callback_url = callbackUrl,
-        validations,
+        validations = JsonSerializer.Deserialize<JsonElement>(asked.ToJson()),
         additional_data = additionalData
     });
 
@@ -139,105 +151,62 @@ app.MapPost("/api/generate", async (HttpContext ctx, IHttpClientFactory httpClie
     // Webhook gelene kadar 'pending'; QR tarama penceresi ~10 dk.
     store.Set($"cbresult:{nonce}", "{\"status\":\"pending\"}", 600);
     // Sorulan koşulu nonce ile birlikte sakla — callback sonucu buna göre okur (TTL = QR ömrü + pay).
-    store.Set($"asked:{nonce}", System.Text.Json.JsonSerializer.Serialize(validations), 960);
+    store.Set($"asked:{nonce}", asked.ToJson(), 960);
 
     app.Logger.LogInformation("[Generate-callback] nonce={Nonce} pk_hash={PkHash}", nonce, keys.PkHashHex[..8]);
     await ctx.Response.WriteAsJsonAsync(new { nonce, pk_hash = keys.PkHashHex });
 });
 
 // ─── POST /api/callback (VerifyBlind webhook alıcısı) ────────────────────────
-// Imza dogrula (RSA-PSS, VerifyBlind webhook public key) → decrypt (kendi private key) →
-// enclave imzasi dogrula → sonucu nonce'a gore sakla. statusUrl bunu poll eder.
-app.MapPost("/api/callback", async (HttpContext ctx, IHttpClientFactory httpClientFactory,
+// VerifyBlind.Server tek çağrıda: timestamp tazeligi (±300 sn) → webhook imzasi (RSA-PSS,
+// VerifyBlind webhook public key) → decrypt (kendi private key) → enclave imzasi → imzali
+// nonce == webhook nonce'u. Sonra nonce'u bir kez tuketip sonucu SORDUGUMUZ kosula gore okur.
+// Sonuc nonce'a gore saklanir; statusUrl bunu poll eder.
+app.MapPost("/api/callback", async (HttpRequest request, IVerifyBlindVerifier verifier,
     InMemoryTtlStore store, CallbackKeyProvider keys) =>
 {
-    var apiUrl = Environment.GetEnvironmentVariable("VERIFYBLIND_API_URL") ?? "https://api.verifyblind.com";
-    var rawBody = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
-    var sig = ctx.Request.Headers["X-Webhook-Signature"].ToString();
-    var ts  = ctx.Request.Headers["X-Webhook-Timestamp"].ToString();
-
-    // 1. Timestamp tazeligi (replay korumasi, ±300 sn)
-    if (!long.TryParse(ts, out var tsSec) ||
-        Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - tsSec) > 300)
-    {
-        ctx.Response.StatusCode = 401;
-        await ctx.Response.WriteAsJsonAsync(new { error = "stale timestamp" });
-        return;
-    }
-
-    // 2. Webhook imzasi — VerifyBlind webhook PUBLIC key ile RSA-PSS dogrula
-    var httpClient = httpClientFactory.CreateClient();
-    var keyRes = await httpClient.GetAsync($"{apiUrl}/api/public/webhook-signing-key");
-    if (!keyRes.IsSuccessStatusCode) { ctx.Response.StatusCode = 502; return; }
-    using var keyDoc = System.Text.Json.JsonDocument.Parse(await keyRes.Content.ReadAsStringAsync());
-    var webhookPubPem = keyDoc.RootElement.GetProperty("public_key").GetString()!;
-
-    if (string.IsNullOrEmpty(sig) || !CallbackCrypto.VerifyWebhookSignature(webhookPubPem, ts, rawBody, sig))
-    {
-        app.Logger.LogWarning("[Callback] Geçersiz webhook imzası");
-        ctx.Response.StatusCode = 401;
-        await ctx.Response.WriteAsJsonAsync(new { error = "invalid signature" });
-        return;
-    }
-
-    using var body = System.Text.Json.JsonDocument.Parse(rawBody);
-    var root = body.RootElement;
-    var nonce = root.GetProperty("nonce").GetString()!;
-
-    // 3a. Iptal callback'i
-    if (root.TryGetProperty("status", out var stEl) && stEl.GetString() == "cancelled")
-    {
-        var reason = root.TryGetProperty("reason", out var rEl) ? rEl.GetString() : "user_cancelled";
-        store.Set($"cbresult:{nonce}",
-            System.Text.Json.JsonSerializer.Serialize(new { status = "cancelled", reason }), 600);
-        ctx.Response.StatusCode = 200;
-        return;
-    }
-
-    // 3b. Basari callback'i — decrypt + enclave-sig dogrula
+    CallbackResult r;
     try
     {
-        var enc = root.GetProperty("encrypted_response");
-        var encKey = enc.GetProperty("enc_key").GetString()!;
-        var blob = enc.GetProperty("blob").GetString()!;
-        var (payload, signature) = CallbackCrypto.DecryptEncryptedResponse(keys.Rsa, encKey, blob);
-
-        var encKeyRes = await httpClient.GetAsync($"{apiUrl}/api/public/enclave-key");
-        var enclavePub = (await encKeyRes.Content.ReadAsStringAsync()).Trim();
-        if (!CallbackCrypto.VerifyEnclaveSignature(enclavePub, payload, signature))
-        {
-            app.Logger.LogWarning("[Callback] Geçersiz enclave imzası, nonce={Nonce}", nonce);
-            ctx.Response.StatusCode = 200; // webhook'u onayla ama sonucu saklama
-            return;
-        }
-
-        // payload = enclave imzali ic yuk: { nonce, validations:{...}, additional_data? }
-        using var claims = System.Text.Json.JsonDocument.Parse(payload);
-
-        // Sonucu generate'te SORDUGUMUZ kosula gore oku (nonce ile saklanan), tarayicinin
-        // soyledigine gore degil. Tek kullanimlik: okununca silinir.
-        var askedJson = store.GetAndRemove($"asked:{nonce}");
-        var mismatch = askedJson is null
-            ? "sorulan koşul bulunamadı (süresi dolmuş veya zaten kullanılmış)"
-            : AskedValidations.Check(askedJson, claims.RootElement, nonce);
-        if (mismatch is not null)
-        {
-            app.Logger.LogWarning("[Callback] Sonuç reddedildi ({Reason}), nonce={Nonce}", mismatch, nonce);
-            ctx.Response.StatusCode = 200; // webhook'u onayla ama sonucu saklama
-            return;
-        }
-
-        store.Set($"cbresult:{nonce}",
-            System.Text.Json.JsonSerializer.Serialize(new { status = "completed", data = claims.RootElement.Clone() }), 600);
-
-        app.Logger.LogInformation("[Callback] ✅ nonce={Nonce} çözüldü + imza doğrulandı", nonce);
-        ctx.Response.StatusCode = 200;
+        r = await verifier.VerifyCallbackAsync(request.Body,
+            request.Headers["X-Webhook-Signature"], request.Headers["X-Webhook-Timestamp"], keys.Key);
     }
-    catch (Exception ex)
+    catch (VerifyBlindException e) when (WebhookRejection(e) is { } rejected)
     {
-        app.Logger.LogError(ex, "[Callback] İşleme hatası, nonce={Nonce}", nonce);
-        ctx.Response.StatusCode = 200; // 2xx don ki VerifyBlind retry/hata uretmesin; sonuc 'pending' kalir
+        app.Logger.LogWarning("[Callback] Webhook reddedildi ({Code})", e.Code);
+        return rejected;
     }
+    catch (VerifyBlindException e)
+    {
+        // Webhook imzasi gecerli ama icerik cozulemedi / enclave imzasi tutmadi.
+        app.Logger.LogWarning("[Callback] Sonuç saklanmadı ({Code})", e.Code);
+        return Results.Ok(); // webhook'u onayla ama sonucu saklama
+    }
+
+    // Iptal callback'i
+    if (r.Status == CallbackStatus.Cancelled)
+    {
+        store.Set($"cbresult:{r.Nonce}",
+            JsonSerializer.Serialize(new { status = "cancelled", reason = r.Reason }), 600);
+        return Results.Ok();
+    }
+
+    // Sonucu generate'te SORDUGUMUZ kosula gore oku (nonce ile saklanan), tarayicinin
+    // soyledigine gore degil. Tek kullanimlik: okununca silinir.
+    var outcome = await verifier.ConsumeAndCheckAsync(r.Verified!,
+        nonce => Task.FromResult(store.GetAndRemove($"asked:{nonce}")));
+    if (!outcome.Ok)
+    {
+        app.Logger.LogWarning("[Callback] Sonuç reddedildi ({Code}), nonce={Nonce}", outcome.Error.Code, r.Nonce);
+        return Results.Ok(); // webhook'u onayla ama sonucu saklama
+    }
+
+    // data = enclave imzali ic yuk: { nonce, validations:{...}, additional_data? }
+    store.Set($"cbresult:{r.Nonce}",
+        JsonSerializer.Serialize(new { status = "completed", data = outcome.Result.Payload }), 600);
+
+    app.Logger.LogInformation("[Callback] ✅ nonce={Nonce} çözüldü + imza doğrulandı", r.Nonce);
+    return Results.Ok();
 });
 
 // ─── GET /api/status/{nonce} (SDK statusUrl bunu poll eder) ──────────────────
@@ -251,46 +220,65 @@ app.MapGet("/api/status/{nonce}", (string nonce, InMemoryTtlStore store) =>
 // Kullanici mobil app'ten dogrulamayi geri cektiginde VerifyBlind buraya IMZALI bir
 // webhook POST eder: { nonce, partner_id } (callback ile AYNI RSA-PSS imzasi).
 // Referans deseni: once IMZAYI DOGRULA, sonra bu nonce'a bagli sakladigin veriyi SIL.
-app.MapPost("/api/revoke", async (HttpContext ctx, IHttpClientFactory httpClientFactory) =>
+app.MapPost("/api/revoke", async (HttpRequest request, IVerifyBlindVerifier verifier) =>
 {
-    var apiUrl = Environment.GetEnvironmentVariable("VERIFYBLIND_API_URL") ?? "https://api.verifyblind.com";
-    var rawBody = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
-    var sig = ctx.Request.Headers["X-Webhook-Signature"].ToString();
-    var ts  = ctx.Request.Headers["X-Webhook-Timestamp"].ToString();
-
-    // 1. Timestamp tazeligi (replay korumasi, ±300 sn)
-    if (!long.TryParse(ts, out var tsSec) ||
-        Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - tsSec) > 300)
+    WebhookBody body;
+    try
     {
-        ctx.Response.StatusCode = 401;
-        await ctx.Response.WriteAsJsonAsync(new { error = "stale timestamp" });
-        return;
+        body = await verifier.VerifyRevokeAsync(request.Body,
+            request.Headers["X-Webhook-Signature"], request.Headers["X-Webhook-Timestamp"]);
     }
-
-    // 2. Webhook imzasi — VerifyBlind webhook PUBLIC key ile RSA-PSS dogrula (callback ile birebir ayni)
-    var httpClient = httpClientFactory.CreateClient();
-    var keyRes = await httpClient.GetAsync($"{apiUrl}/api/public/webhook-signing-key");
-    if (!keyRes.IsSuccessStatusCode) { ctx.Response.StatusCode = 502; return; }
-    using var keyDoc = System.Text.Json.JsonDocument.Parse(await keyRes.Content.ReadAsStringAsync());
-    var webhookPubPem = keyDoc.RootElement.GetProperty("public_key").GetString()!;
-
-    if (string.IsNullOrEmpty(sig) || !CallbackCrypto.VerifyWebhookSignature(webhookPubPem, ts, rawBody, sig))
+    catch (VerifyBlindException e) when (WebhookRejection(e) is { } rejected)
     {
-        app.Logger.LogWarning("[Revoke] Geçersiz webhook imzası");
-        ctx.Response.StatusCode = 401;
-        await ctx.Response.WriteAsJsonAsync(new { error = "invalid signature" });
-        return;
+        app.Logger.LogWarning("[Revoke] Webhook reddedildi ({Code})", e.Code);
+        return rejected;
     }
-
-    // 3. Parse { nonce, partner_id }
-    using var body = System.Text.Json.JsonDocument.Parse(rawBody);
-    var nonce = body.RootElement.TryGetProperty("nonce", out var nEl) ? nEl.GetString() : null;
+    catch (VerifyBlindException e)
+    {
+        app.Logger.LogWarning("[Revoke] İmzalı gövde okunamadı ({Code})", e.Code);
+        return Results.Ok();
+    }
 
     // TODO partner: burada bu nonce'a bagli sakladigin kullanici verisini SIL (KVKK geri cekme).
     // Bu ornek dogrulama sonucunu kalici saklamadigindan (cbresult:{nonce} 600s sonra ucar)
     // silinecek kalici veri yok — yalniz imzayi dogrulayip 200 ile ack'liyoruz.
-    app.Logger.LogInformation("[Revoke] ✅ İmza doğrulandı, revoke ack, nonce={Nonce}", nonce);
-    ctx.Response.StatusCode = 200;
+    app.Logger.LogInformation("[Revoke] ✅ İmza doğrulandı, revoke ack, nonce={Nonce}", body.Nonce);
+    return Results.Ok();
 });
 
 app.Run();
+
+// Webhook'un kendisi reddedildiyse (timestamp, imza, anahtar alinamadi) donulecek yanit;
+// imza gecerliyse null. Govdeler eski el yazimi surumle ayni.
+static IResult? WebhookRejection(VerifyBlindException e) => e.Code switch
+{
+    VerifyBlindErrorCode.BadWebhookTimestamp => Results.Json(new { error = "stale timestamp" }, statusCode: 401),
+    VerifyBlindErrorCode.BadWebhookSignature => Results.Json(new { error = "invalid signature" }, statusCode: 401),
+    VerifyBlindErrorCode.KeyFetchFailed => Results.StatusCode(502),
+    _ => null,
+};
+
+// Demo sayfasi ziyaretcinin neyi dogrulatacagini secmesine izin verir; tarayicinin secimi YALNIZ
+// bu listeden kabul edilir: age = "18+", user_id = true. Baska anahtar, baska yas kosulu ("1+"),
+// true olmayan user_id ya da nesne olmayan deger → null (400). Gercek site tarayiciyi hic dinlemez.
+static VerifyBlindAsked? PickAsked(JsonElement requested)
+{
+    if (requested.ValueKind == JsonValueKind.Null) return new VerifyBlindAsked();
+    if (requested.ValueKind != JsonValueKind.Object) return null;
+
+    string? age = null;
+    var userId = false;
+    foreach (var prop in requested.EnumerateObject())
+    {
+        if (prop.Name == "age" && prop.Value.ValueKind == JsonValueKind.String && prop.Value.GetString() == "18+")
+            age = "18+";
+        else if (prop.Name == "user_id" && prop.Value.ValueKind == JsonValueKind.True)
+            userId = true;
+        else
+            return null;
+    }
+    return new VerifyBlindAsked { Age = age, UserId = userId };
+}
+
+// WebApplicationFactory<Program> (Tests/) icin.
+public partial class Program { }

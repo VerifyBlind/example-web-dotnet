@@ -8,6 +8,10 @@ edeceğinizi gösteren örnek (ASP.NET, Razor Pages + minimal API). `example-web
 gösterir: anahtar çifti partner backend'inde durur, doğrulama sonucu imzalı bir webhook ile sunucuya
 gelir ve **hiç tarayıcıya düşmez**.
 
+Doğrulama kriptosu resmi [`VerifyBlind.Server`](https://www.nuget.org/packages/VerifyBlind.Server) NuGet
+paketinden gelir ([kaynak](https://github.com/VerifyBlind/verifyblind-sdk-dotnet)); bu örnekte elle yazılmış
+kripto yoktur.
+
 ---
 
 ## Türkçe
@@ -23,19 +27,22 @@ gelir ve **hiç tarayıcıya düşmez**.
    döner. API key ve private key tarayıcıya **hiç** gösterilmez. **Ne sorulacağına (`validations`) sunucu
    karar verir** — tarayıcıdaki istek değiştirilebilir, `"18+"` yerine `"1+"` soran biri de imzalı
    `age: true` alır. Bu demo ziyaretçinin seçimini yalnız bir izin listesinden (`18+`, `user_id`) kabul
-   eder; gerçek bir site `validations`'ı kendi ayarından koyar. Sorulan koşul nonce ile birlikte saklanır.
-   (`Program.cs`, `Services/AskedValidations.cs`)
+   eder; gerçek bir site `validations`'ı kendi ayarından koyar. Sorulan koşul nonce ile birlikte
+   `VerifyBlindAsked.ToJson()` olarak saklanır. (`Program.cs`: `PickAsked`)
 2. **Doğrulama** — Kullanıcı QR'ı VerifyBlind mobil ile okutur. Enclave sonucu partner public key'iyle
    şifreler ve `callback_url`'e (**`POST /api/callback`**) RSA-PSS **imzalı** bir webhook olarak POST eder.
-3. **Callback alıcı** (`POST /api/callback`) — sırasıyla: (a) webhook imzasını VerifyBlind'ın **public
-   key**'iyle (`GET /api/public/webhook-signing-key`) RSA-PSS doğrula → (b) `encrypted_response`'u **kendi
-   private key**'inle çöz (RSA-OAEP-SHA256 + AES-256-GCM) → (c) enclave iç imzasını doğrula → (d) sonucu
-   **nonce ile saklanan koşula göre** oku: imzalı `validations.age_condition` zorunlu ve
-   sorulan koşula eşit olmalı (yoksa ya da farklıysa ret) → (e) sonucu nonce'a göre sakla. (`Services/CallbackCrypto.cs`,
-   `Services/CallbackKeyProvider.cs`, `Services/AskedValidations.cs`)
+3. **Callback alıcı** (`POST /api/callback`) — `verifier.VerifyCallbackAsync(...)` sırasıyla: (a) webhook
+   imzasını VerifyBlind'ın **public key**'iyle (`GET /api/public/webhook-signing-key`) RSA-PSS doğrular →
+   (b) `encrypted_response`'u **kendi private key**'inle çözer (RSA-OAEP-SHA256 + AES-256-GCM) → (c) enclave
+   iç imzasını doğrular. Ardından `verifier.ConsumeAndCheckAsync(...)` (d) nonce'u bir kez tüketir ve sonucu
+   **nonce ile saklanan koşula göre** okur: imzalı `validations.age_condition` zorunlu ve sorulan koşula eşit
+   olmalı (yoksa ya da farklıysa ret) → (e) sonuç nonce'a göre saklanır. Bu portal test partneri olduğu için
+   `AllowTestCards = true`; gerçek sitede kapalı kalır. Anahtar: `Services/CallbackKeyProvider.cs`
+   (`VerifyBlindCallbackKey.Load`).
 4. **Status** (`GET /api/status/{nonce}`) — SDK bu ucu poll eder; `completed`/`cancelled`/`pending` döner.
 5. **Revoke** (`POST /api/revoke`) — kullanıcı doğrulamayı geri çekince VerifyBlind buraya imzalı
-   `{ nonce, partner_id }` POST eder; örnek imzayı doğrulayıp ack'ler (sakladığınız veriyi burada silersiniz).
+   `{ nonce, partner_id }` POST eder; örnek imzayı `verifier.VerifyRevokeAsync(...)` ile doğrulayıp ack'ler
+   (sakladığınız veriyi burada silersiniz).
 
 ### Kripto formatı (özet)
 - **Webhook imzası:** `RSA-PSS-SHA256`, VerifyBlind özel anahtarıyla imzalı; partner **public key** ile
@@ -51,7 +58,7 @@ gelir ve **hiç tarayıcıya düşmez**.
 #   CALLBACK_URL=https://<sizin-domain>/net/api/callback      # host, kayıtlı partner domain'iyle eşleşmeli
 #   CALLBACK_PRIVATE_KEY=<base64 PKCS#8 DER RSA-2048>         # üretim komutu .env.example'da
 dotnet run           # uygulama /net taban yolu altında sunulur
-dotnet test Tests/   # CallbackCrypto decrypt round-trip + imza testleri
+dotnet test Tests/   # uçlar, sahte VerifyBlind API'sine karşı (generate, callback, status, revoke)
 ```
 
 > Sonuç deposu (`InMemoryTtlStore`) tek-instance içindir; üretimde Redis/DB kullanın. `callback_url` ve
@@ -69,6 +76,9 @@ pattern (ASP.NET, Razor Pages + minimal API). `example-web-nextjs` and `example-
 key pair stays on the partner backend, the verification result arrives via a signed webhook and **never
 touches the browser**.
 
+The verification crypto comes from the official [`VerifyBlind.Server`](https://www.nuget.org/packages/VerifyBlind.Server)
+NuGet package ([source](https://github.com/VerifyBlind/verifyblind-sdk-dotnet)); this example has no hand-written crypto.
+
 ### Which pattern?
 - **Browser-decrypt (PoP)** — fastest setup; the result is decrypted in the browser (php/nextjs examples).
 - **Server-decrypt (callback)** — this example. You hold a fixed key pair on your backend; the result
@@ -81,19 +91,22 @@ touches the browser**.
    **The server decides what is asked (`validations`)** — the browser request can be edited, and someone
    who asks `"1+"` instead of `"18+"` also gets a signed `age: true`. This demo accepts the visitor's
    choice only from an allow-list (`18+`, `user_id`); a real site sets `validations` from its own
-   configuration. The asked condition is stored with the nonce. (`Program.cs`, `Services/AskedValidations.cs`)
+   configuration. The asked condition is stored with the nonce as `VerifyBlindAsked.ToJson()`.
+   (`Program.cs`: `PickAsked`)
 2. **Verification** — The user scans the QR with VerifyBlind mobile. The enclave encrypts the result with
    the partner public key and POSTs an RSA-PSS **signed** webhook to `callback_url` (**`POST /api/callback`**).
-3. **Callback receiver** (`POST /api/callback`) — in order: (a) verify the webhook signature (RSA-PSS) with
-   VerifyBlind's **public key** (`GET /api/public/webhook-signing-key`) → (b) decrypt `encrypted_response`
-   with **your private key** (RSA-OAEP-SHA256 + AES-256-GCM) → (c) verify the enclave inner signature →
-   (d) read the result **against the condition stored with the nonce**: the signed
-   `validations.age_condition` is required and must equal the asked condition (missing or different → reject) →
-   (e) store the result by nonce. (`Services/CallbackCrypto.cs`, `Services/CallbackKeyProvider.cs`,
-   `Services/AskedValidations.cs`)
+3. **Callback receiver** (`POST /api/callback`) — `verifier.VerifyCallbackAsync(...)` in order: (a) verifies
+   the webhook signature (RSA-PSS) with VerifyBlind's **public key** (`GET /api/public/webhook-signing-key`) →
+   (b) decrypts `encrypted_response` with **your private key** (RSA-OAEP-SHA256 + AES-256-GCM) → (c) verifies
+   the enclave inner signature. Then `verifier.ConsumeAndCheckAsync(...)` (d) consumes the nonce once and reads
+   the result **against the condition stored with the nonce**: the signed `validations.age_condition` is
+   required and must equal the asked condition (missing or different → reject) → (e) the result is stored by
+   nonce. This portal is a test partner, so `AllowTestCards = true`; leave it off on a real site. Key:
+   `Services/CallbackKeyProvider.cs` (`VerifyBlindCallbackKey.Load`).
 4. **Status** (`GET /api/status/{nonce}`) — the SDK polls this; returns `completed`/`cancelled`/`pending`.
 5. **Revoke** (`POST /api/revoke`) — when the user revokes, VerifyBlind POSTs a signed `{ nonce, partner_id }`
-   here; the example verifies the signature and acks (this is where you delete the stored record).
+   here; the example verifies the signature with `verifier.VerifyRevokeAsync(...)` and acks (this is where
+   you delete the stored record).
 
 ### Crypto format (summary)
 - **Webhook signature:** `RSA-PSS-SHA256`, signed with VerifyBlind's private key; the partner verifies with
@@ -109,7 +122,7 @@ touches the browser**.
 #   CALLBACK_URL=https://<your-domain>/net/api/callback       # host must match your registered partner domain
 #   CALLBACK_PRIVATE_KEY=<base64 PKCS#8 DER RSA-2048>          # generation command in .env.example
 dotnet run           # the app is served under the /net path base
-dotnet test Tests/   # CallbackCrypto decrypt round-trip + signature tests
+dotnet test Tests/   # endpoints against a stub VerifyBlind API (generate, callback, status, revoke)
 ```
 
 > The result store (`InMemoryTtlStore`) is single-instance only; use Redis/DB in production. The

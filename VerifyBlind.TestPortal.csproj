@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
     <PackageReference Include="Sentry.AspNetCore" Version="5.0.0" />
+    <PackageReference Include="VerifyBlind.Server" Version="1.0.0" />
   </ItemGroup>
 
   <!-- The xUnit test project lives under Tests/. Keep its sources out of this
