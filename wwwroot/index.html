@@ -343,7 +343,7 @@ function showResult(data) {
     if (data.nsbd_id) lines.push('• NSBD ID: ' + maskId(data.nsbd_id));
     if (data.doc_id) lines.push('• Doc ID: ' + maskId(data.doc_id));
     if (data.validations) Object.keys(data.validations).forEach(function (k) { lines.push('• ' + k + ': ' + fmtVal(data.validations[k])); });
-    Object.keys(data).filter(function (k) { return ['user_id','nsbd_id','doc_id','nonce','validations','status','token'].indexOf(k) === -1; })
+    Object.keys(data).filter(function (k) { return ['user_id','nsbd_id','doc_id','nonce','validations','status','token','attestation'].indexOf(k) === -1; })
         .forEach(function (k) { lines.push('• ' + k + ': ' + fmtVal(data[k])); });
     if (lines.length === 0) lines.push(JSON.stringify(data, null, 2));
     document.getElementById('result-pre').textContent = lines.join('\n');
